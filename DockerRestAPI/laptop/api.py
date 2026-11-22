@@ -98,6 +98,33 @@ def list_all():
     brevets = list(db.brevets.find({}, {"_id": False}))
     return json_response({"brevets": brevets})
 
+
+def list_times_only(time_field):
+    brevets = []
+    for brevet in db.brevets.find({}, {"_id": False}):
+        result = {key: value for key, value in brevet.items() if key != "controls"}
+        result["controls"] = [
+            {
+                key: value
+                for key, value in control.items()
+                if key != ("close" if time_field == "open" else "open")
+            }
+            for control in brevet.get("controls", [])
+        ]
+        brevets.append(result)
+    return json_response({"brevets": brevets})
+
+
+@app.route("/listOpenOnly")
+@app.route("/listOpenOnly/json")
+def list_open_only():
+    return list_times_only("open")
+
+@app.route("/listCloseOnly")
+@app.route("/listCloseOnly/json")
+def list_close_only():
+    return list_times_only("close")
+
 @app.route("/_calc_times", methods=["GET", "OPTIONS"])
 def _calc_times():
     """
