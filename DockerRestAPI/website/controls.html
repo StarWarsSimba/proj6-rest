@@ -22,8 +22,8 @@
           <tr>
             <th>Brevet distance (km)</th>
             <th>Start</th>
-            <th>Miles</th>
             <th>km</th>
+            <th>Miles</th>
             <th>Location</th>
             <th>Open</th>
             <th>Close</th>
@@ -39,16 +39,18 @@
       // response handler
       function(data) {
          console.log(data);
-         data.controls.forEach(function(control) {
+         data.brevets.forEach(function(brevet) {
+          brevet.controls.forEach(function(control) {
             $("#controls-tbody").append(
-              "<tr><td>" + control.brevet_distance +
-              "</td><td>" + control.begin_date + control.begin_time +
-              "</td><td>" + control.miles +
+              "<tr><td>" + brevet.distance +
+              "</td><td>" + brevet.begin_date + brevet.begin_time +
               "</td><td>" + control.km +
+              "</td><td>" + control.mi +
               "</td><td>" + control.location +
               "</td><td>" + control.open +
               "</td><td>" + control.close +
               "</td></tr>");
+          });
          });
        } // end of handler function
      ).fail(function(jqXHR, textStatus, error) {

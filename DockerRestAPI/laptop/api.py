@@ -1,6 +1,6 @@
 # Laptop Service
 
-from flask import Flask, request, flash, redirect, url_for
+from flask import Flask, request, redirect, url_for
 from flask_restful import Resource, Api
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
@@ -44,7 +44,6 @@ def json_response(obj, status=200):
 def submit_controls():
     brevet_distance = request.form.get("distance", type=int)
     if brevet_distance not in acp_times.VALID_DISTANCES:
-        flash("Select a valid brevet distance.")
         return redirect("http://localhost:5002/")
 
     begin_date = request.form.get("begin_date", "")
@@ -56,24 +55,24 @@ def submit_controls():
     km_values = request.form.getlist("km")
     locations = request.form.getlist("location")
     if not (len(miles_values) == len(km_values) == len(locations)):
-        flash("Control row data is incomplete.")
         return redirect("http://localhost:5002/")
-    documents = []
+    document = {
+        "distance": brevet_distance,
+        "begin_date": begin_date,
+        "begin_time": begin_time,
+        "controls": []
+    }
 
     for miles, km, location in zip(miles_values, km_values, locations):
         if not km.strip():
             continue
         control_km = float(km)
         if not math.isfinite(control_km) or not 0 <= control_km:
-            flash("Control distances must be a nonnegative number.")
             return redirect("http://localhost:5002/")
 
         open_time = acp_times.open_time(control_km, brevet_distance, brevet_start)
         close_time = acp_times.close_time(control_km, brevet_distance, brevet_start)
-        document = {
-            "brevet_distance": brevet_distance,
-            "begin_date": begin_date,
-            "begin_time": begin_time,
+        control = {
             "km": control_km,
             "location": location.strip(),
             "open": open_time,
@@ -82,25 +81,22 @@ def submit_controls():
         if miles.strip():
             control_miles = float(miles)
             if not math.isfinite(control_miles) or control_miles <= 0:
-                flash("Miles must be a nonnegative number.")
                 return redirect("http://localhost:5002/")
-            document["miles"] = control_miles
-        documents.append(document)
+            control["mi"] = control_miles
+        document["controls"].append(control)
 
-    if not documents:
-        flash("Enter at least one control distance before submitting.")
+    if not document["controls"]:
         return redirect("http://localhost:5002/")
 
-    db.controls.insert_many(documents)
+    db.brevets.insert_one(document)
 
-    flash("Saved {} control time(s) to the database.".format(len(documents)))
     return redirect("http://localhost:5002/")
 
 
 @app.route("/listAll")
 def list_all():
-    controls = list(db.controls.find({}, {"_id": False}))
-    return json_response({"controls": controls})
+    brevets = list(db.brevets.find({}, {"_id": False}))
+    return json_response({"brevets": brevets})
 
 @app.route("/_calc_times", methods=["GET", "OPTIONS"])
 def _calc_times():
