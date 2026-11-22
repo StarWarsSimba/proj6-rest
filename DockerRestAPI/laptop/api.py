@@ -1,26 +1,135 @@
 # Laptop Service
 
-from flask import Flask
+from flask import Flask, request, flash, redirect, url_for
 from flask_restful import Resource, Api
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+import json
+import os
+import acp_times
+import math
+from datetime import datetime
+import config
 
 # Instantiate the app
 app = Flask(__name__)
 api = Api(app)
 
-class Laptop(Resource):
-    def get(self):
-        return {
-            'Laptops': ['Mac OS', 'Dell', 
-            'Windozzee',
-	    'Yet another laptop!',
-	    'Yet yet another laptop!'
-            ]
-        }
+# Enable CORS for all routes - required when browser at :5002 fetches from :5001
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
-# Create routes
-# Another way, without decorators
-api.add_resource(Laptop, '/')
+client = MongoClient(
+    os.environ.get('DB_PORT_27017_TCP_ADDR', 'db'),
+    27017,
+    serverSelectionTimeoutMS=3000,  # fail fast instead of hanging 30s
+)
+db = client.brevetdb
+
+CONFIG = config.configuration()
+app.secret_key = CONFIG.SECRET_KEY
+
+def json_response(obj, status=200):
+    return app.response_class(
+        json.dumps(obj, default=str),
+        mimetype='application/json',
+        status=status,
+    )
+
+@app.route("/submit", methods=["POST"])
+def submit_controls():
+    brevet_distance = request.form.get("distance", type=int)
+    if brevet_distance not in acp_times.VALID_DISTANCES:
+        flash("Select a valid brevet distance.")
+        return redirect("http://localhost:5002/")
+
+    begin_date = request.form.get("begin_date", "")
+    begin_time = request.form.get("begin_time", "")
+    datetime.strptime("{} {}".format(begin_date, begin_time), "%Y-%m-%d %H:%M")
+    brevet_start = "{}T{}-00:00".format(begin_date, begin_time)
+
+    miles_values = request.form.getlist("miles")
+    km_values = request.form.getlist("km")
+    locations = request.form.getlist("location")
+    if not (len(miles_values) == len(km_values) == len(locations)):
+        flash("Control row data is incomplete.")
+        return redirect("http://localhost:5002/")
+    documents = []
+
+    for miles, km, location in zip(miles_values, km_values, locations):
+        if not km.strip():
+            continue
+        control_km = float(km)
+        if not math.isfinite(control_km) or not 0 <= control_km:
+            flash("Control distances must be a nonnegative number.")
+            return redirect("http://localhost:5002/")
+
+        open_time = acp_times.open_time(control_km, brevet_distance, brevet_start)
+        close_time = acp_times.close_time(control_km, brevet_distance, brevet_start)
+        document = {
+            "brevet_distance": brevet_distance,
+            "begin_date": begin_date,
+            "begin_time": begin_time,
+            "km": control_km,
+            "location": location.strip(),
+            "open": open_time,
+            "close": close_time,
+        }
+        if miles.strip():
+            control_miles = float(miles)
+            if not math.isfinite(control_miles) or control_miles <= 0:
+                flash("Miles must be a nonnegative number.")
+                return redirect("http://localhost:5002/")
+            document["miles"] = control_miles
+        documents.append(document)
+
+    if not documents:
+        flash("Enter at least one control distance before submitting.")
+        return redirect("http://localhost:5002/")
+
+    db.controls.insert_many(documents)
+
+    flash("Saved {} control time(s) to the database.".format(len(documents)))
+    return redirect("http://localhost:5002/")
+
+
+@app.route("/listAll")
+def list_all():
+    controls = list(db.controls.find({}, {"_id": False}))
+    return json_response({"controls": controls})
+
+@app.route("/_calc_times", methods=["GET", "OPTIONS"])
+def _calc_times():
+    """
+    Calculates open/close times from miles, using rules
+    described at https://rusa.org/octime_alg.html.
+    Expects one URL-encoded argument, the number of miles.
+    """
+    if request.method == "OPTIONS":
+        return json_response({})
+    app.logger.debug("Got a JSON request")
+    km = request.args.get('km', 999, type=float)
+    brevet_distance = request.args.get('brevet_distance', 200, type=int)
+    begin_date = request.args.get('begin_date', type=str)
+    begin_time = request.args.get('begin_time', type=str)
+    app.logger.debug("km={}".format(km))
+    app.logger.debug("request.args: {}".format(request.args))
+    if not begin_date or not begin_time:
+        return json_response({"error": "begin_date and begin_time required"}, 400)
+    try:
+        open_time = acp_times.open_time(km, brevet_distance, begin_date + "T" + begin_time + "-00:00")
+        close_time = acp_times.close_time(km, brevet_distance, begin_date + "T" + begin_time + "-00:00")
+    except Exception as e:
+        return json_response({"error": str(e)}, 400)
+    result = {"open": open_time, "close": close_time}
+    return json_response({"result": result})
 
 # Run the application
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80, debug=True)
+    # threaded=True so one slow /controls query doesn't block /;
+    # use_reloader=False so volume-mounted edits don't kill in-flight requests
+    app.run(host='0.0.0.0', port=80, debug=True, threaded=True, use_reloader=False)

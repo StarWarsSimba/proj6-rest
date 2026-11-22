@@ -1,0 +1,3 @@
+*.pyc
+DockerRestAPI/laptop/credentials.ini
+.DS_Store
