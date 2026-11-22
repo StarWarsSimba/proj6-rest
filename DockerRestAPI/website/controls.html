@@ -14,6 +14,9 @@
 <div class="container">
   <h1 id="page-title">Saved Control Times</h1>
   <a href="/" class="btn btn-default">Back to calculator</a>
+  <a href="http://localhost:5001/listAll/csv" class="btn btn-default" id="all-csv">Download CSV</a>
+  <a href="http://localhost:5001/listOpenOnly/csv" class="btn btn-default" id="open-csv">Download CSV</a>
+  <a href="http://localhost:5001/listCloseOnly/csv" class="btn btn-default" id="close-csv">Download CSV</a>
 
 
     <div class="table-responsive">
@@ -41,12 +44,18 @@
       endpoint = 'listOpenOnly';
       $('#page-title').text('Saved Open Times');
       $('.close-time').hide();
+      $('#all-csv').hide();
+      $('#close-csv').hide();
     } else if (view === 'close') {
       endpoint = 'listCloseOnly';
       $('#page-title').text('Saved Close Times');
       $('.open-time').hide();
+      $('#all-csv').hide();
+      $('#open-csv').hide();
     } else {
       view = 'all';
+      $('#open-csv').hide();
+      $('#close-csv').hide();
     }
 
     $.getJSON('http://localhost:5001/' + endpoint, {},

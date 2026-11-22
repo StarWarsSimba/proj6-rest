@@ -1,6 +1,6 @@
 # Laptop Service
 
-from flask import Flask, request, redirect, url_for
+from flask import Flask, request, redirect, url_for, Response
 from flask_restful import Resource, Api
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
@@ -10,6 +10,8 @@ import acp_times
 import math
 from datetime import datetime
 import config
+import csv
+import io
 
 # Instantiate the app
 app = Flask(__name__)
@@ -39,6 +41,47 @@ def json_response(obj, status=200):
         mimetype='application/json',
         status=status,
     )
+def csv_response(brevets, status=200):
+    headings = ["brevets/distance", "brevets/begin_date", "brevets/begin_time"]
+    rows = []
+    max_controls = 0
+    has_open = False
+    has_close = False
+    for brevet in brevets:
+        if max_controls < len(brevet["controls"]):
+            max_controls = len(brevet["controls"])
+        row = [brevet["distance"], brevet["begin_date"], brevet["begin_time"]]
+        for control in brevet["controls"]:
+            row.append(control["km"])
+            row.append(control["mi"])
+            row.append(control["location"])
+            if "open" in control:
+                row.append(control["open"])
+                has_open = True
+            if "close" in control:
+                row.append(control["close"])
+                has_close = True
+        rows.append(row)
+    app.logger.debug("max_controls = %s" % max_controls)
+    for i in range(max_controls):
+        headings.append("brevets/controls/%s/km" % i)
+        headings.append("brevets/controls/%s/mi" % i)
+        headings.append("brevets/controls/%s/location" % i)
+        if has_open:
+            headings.append("brevets/controls/%s/open" % i)
+        if has_close:
+            headings.append("brevets/controls/%s/close" % i)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headings)
+    writer.writerows(rows)
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=list.csv"},
+    )
+
 
 @app.route("/submit", methods=["POST"])
 def submit_controls():
@@ -94,12 +137,13 @@ def submit_controls():
 
 
 @app.route("/listAll")
+@app.route("/listAll/json")
 def list_all():
     brevets = list(db.brevets.find({}, {"_id": False}))
     return json_response({"brevets": brevets})
 
 
-def list_times_only(time_field):
+def list_times_only(time_field, is_json):
     brevets = []
     for brevet in db.brevets.find({}, {"_id": False}):
         result = {key: value for key, value in brevet.items() if key != "controls"}
@@ -112,18 +156,34 @@ def list_times_only(time_field):
             for control in brevet.get("controls", [])
         ]
         brevets.append(result)
-    return json_response({"brevets": brevets})
+    if is_json:
+        return json_response({"brevets": brevets})
+    else:
+        return csv_response(brevets)
 
+@app.route("/listAll/csv")
+def list_all_csv():
+    brevets = list(db.brevets.find({}, {"_id": False}))
+    app.logger.debug(type(brevets[0]))
+    return csv_response(brevets)
 
 @app.route("/listOpenOnly")
 @app.route("/listOpenOnly/json")
 def list_open_only():
-    return list_times_only("open")
+    return list_times_only("open", True)
+
+@app.route("/listOpenOnly/csv")
+def list_open_only_csv():
+    return list_times_only("open", False)
 
 @app.route("/listCloseOnly")
 @app.route("/listCloseOnly/json")
 def list_close_only():
-    return list_times_only("close")
+    return list_times_only("close", True)
+
+@app.route("/listCloseOnly/csv")
+def list_close_only_csv():
+    return list_times_only("close", False)
 
 @app.route("/_calc_times", methods=["GET", "OPTIONS"])
 def _calc_times():
