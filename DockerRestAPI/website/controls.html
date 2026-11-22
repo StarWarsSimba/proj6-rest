@@ -12,7 +12,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>Saved Control Times</h1>
+  <h1 id="page-title">Saved Control Times</h1>
   <a href="/" class="btn btn-default">Back to calculator</a>
 
 
@@ -25,8 +25,8 @@
             <th>km</th>
             <th>Miles</th>
             <th>Location</th>
-            <th>Open</th>
-            <th>Close</th>
+            <th class="open-time">Open</th>
+            <th class="close-time">Close</th>
           </tr>
         </thead>
         <tbody id="controls-tbody">
@@ -35,7 +35,21 @@
     </div>
 </div>
 <script type="text/javascript">
-    $.getJSON('http://localhost:5001/listAll', {}, 
+    var view = new URLSearchParams(window.location.search).get('view');
+    var endpoint = 'listAll';
+    if (view === 'open') {
+      endpoint = 'listOpenOnly';
+      $('#page-title').text('Saved Open Times');
+      $('.close-time').hide();
+    } else if (view === 'close') {
+      endpoint = 'listCloseOnly';
+      $('#page-title').text('Saved Close Times');
+      $('.open-time').hide();
+    } else {
+      view = 'all';
+    }
+
+    $.getJSON('http://localhost:5001/' + endpoint, {},
       // response handler
       function(data) {
          console.log(data);
@@ -47,15 +61,18 @@
               "</td><td>" + control.km +
               "</td><td>" + control.mi +
               "</td><td>" + control.location +
-              "</td><td>" + control.open +
-              "</td><td>" + control.close +
-              "</td></tr>");
+              (view !== 'close' ? "<td class='open-time'>" + control.open + "</td>" : "") +
+              (view !== 'open' ? "<td class='close-time'>" + control.close + "</td>" : "") +
+              "</tr>");
           });
          });
        } // end of handler function
      ).fail(function(jqXHR, textStatus, error) {
         console.error("Failed to fetch from laptop-service:", textStatus, error);
-        $("#laptop-list").append("<li style='color:red'>Failed to load: " + textStatus + " - check CORS / service is running</li>");
+        $("#controls-tbody").append(
+          "<tr><td colspan='" + (view === 'all' ? 7 : 6) +
+          "' style='color:red'>Failed to load control times: " +
+          textStatus + " - check CORS / service is running</td></tr>");
      });// End of getJSON
 
 </script>
