@@ -17,6 +17,20 @@
   <a href="http://localhost:5001/listAll/csv" class="btn btn-default" id="all-csv">Download CSV</a>
   <a href="http://localhost:5001/listOpenOnly/csv" class="btn btn-default" id="open-csv">Download CSV</a>
   <a href="http://localhost:5001/listCloseOnly/csv" class="btn btn-default" id="close-csv">Download CSV</a>
+  <select name="top" id="max-controls">
+    <option value="">No Limit</option>
+    <option value="0">0</option>
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+    <option value="6">6</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+    <option value="9">9</option>
+    <option value="10">10</option>
+  </select>
 
 
     <div class="table-responsive">
@@ -56,33 +70,41 @@
       view = 'all';
       $('#open-csv').hide();
       $('#close-csv').hide();
+      $('#max-controls').hide();
     }
-
-    $.getJSON('http://localhost:5001/' + endpoint, {},
-      // response handler
-      function(data) {
-         console.log(data);
-         data.brevets.forEach(function(brevet) {
-          brevet.controls.forEach(function(control) {
-            $("#controls-tbody").append(
-              "<tr><td>" + brevet.distance +
-              "</td><td>" + brevet.begin_date + brevet.begin_time +
-              "</td><td>" + control.km +
-              "</td><td>" + control.mi +
-              "</td><td>" + control.location +
-              (view !== 'close' ? "<td class='open-time'>" + control.open + "</td>" : "") +
-              (view !== 'open' ? "<td class='close-time'>" + control.close + "</td>" : "") +
-              "</tr>");
+    $('#max-controls').on('change', function() {
+      const selectedValue = $(this).val();
+      load_data(selectedValue);
+    });
+    function load_data(top) {
+      $("#controls-tbody").empty();
+      $.getJSON('http://localhost:5001/' + endpoint, {"top":top},
+        // response handler
+        function(data) {
+          console.log(data);
+          data.brevets.forEach(function(brevet) {
+            brevet.controls.forEach(function(control) {
+              $("#controls-tbody").append(
+                "<tr><td>" + brevet.distance +
+                "</td><td>" + brevet.begin_date + brevet.begin_time +
+                "</td><td>" + control.km +
+                "</td><td>" + control.mi +
+                "</td><td>" + control.location +
+                (view !== 'close' ? "<td class='open-time'>" + control.open + "</td>" : "") +
+                (view !== 'open' ? "<td class='close-time'>" + control.close + "</td>" : "") +
+                "</tr>");
+            });
           });
-         });
-       } // end of handler function
-     ).fail(function(jqXHR, textStatus, error) {
-        console.error("Failed to fetch from laptop-service:", textStatus, error);
-        $("#controls-tbody").append(
-          "<tr><td colspan='" + (view === 'all' ? 7 : 6) +
-          "' style='color:red'>Failed to load control times: " +
-          textStatus + " - check CORS / service is running</td></tr>");
-     });// End of getJSON
+        } // end of handler function
+      ).fail(function(jqXHR, textStatus, error) {
+          console.error("Failed to fetch from laptop-service:", textStatus, error);
+          $("#controls-tbody").append(
+            "<tr><td colspan='" + (view === 'all' ? 7 : 6) +
+            "' style='color:red'>Failed to load control times: " +
+            textStatus + " - check CORS / service is running</td></tr>");
+      });// End of getJSON
+    }
+    load_data(null);
 
 </script>
 </body>

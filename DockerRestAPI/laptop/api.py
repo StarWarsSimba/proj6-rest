@@ -144,6 +144,7 @@ def list_all():
 
 
 def list_times_only(time_field, is_json):
+    k = request.args.get('top')
     brevets = []
     for brevet in db.brevets.find({}, {"_id": False}):
         result = {key: value for key, value in brevet.items() if key != "controls"}
@@ -155,6 +156,10 @@ def list_times_only(time_field, is_json):
             }
             for control in brevet.get("controls", [])
         ]
+        
+        if k:
+            result["controls"] = sorted(result["controls"], key=lambda u: u[time_field])
+            result["controls"] = result["controls"][:int(k)]
         brevets.append(result)
     if is_json:
         return json_response({"brevets": brevets})
